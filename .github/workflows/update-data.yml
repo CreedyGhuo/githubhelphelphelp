@@ -1,0 +1,39 @@
+name: Update data
+
+on:
+  schedule:
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 生成 data.json
+        run: node gen-data.mjs
+        env:
+          TOP: "20"
+          MAX_MIN: "12"
+      - name: 提交变更
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- data.json; then
+            echo "data.json 没有变化，跳过提交"
+          else
+            git add data.json
+            git commit -m "chore(data): refresh snapshot"
+            git push
+          fi
