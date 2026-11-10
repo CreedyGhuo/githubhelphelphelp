@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="棒棒棒">
+<meta name="theme-color" content="#0d1117">
+<link rel="apple-touch-icon" href="icon.png">
+<title>github 棒棒棒</title>
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--border:#30363d;--text:#c9d1d9;--muted:#8b949e;
+        --hi:#e6edf3;--acc:#58a6ff;--gold:#d29922;--green:#7ee787;--sel:#16233a}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden}
+  body{padding-bottom:env(safe-area-inset-bottom)}
+  header{position:sticky;top:0;z-index:10;background:rgba(13,17,23,.94);backdrop-filter:blur(10px);
+    padding:calc(env(safe-area-inset-top) + 12px) 16px 0;border-bottom:1px solid var(--border)}
+  h1{margin:0;font-size:19px;color:var(--hi)}
+  .meta{font-size:11px;color:var(--muted);margin:4px 0 10px}
+  .tabs{display:flex;gap:8px;padding-bottom:10px}
+  .tab{flex:1;text-align:center;padding:8px 6px;border-radius:9px;background:#1a2029;color:var(--muted);
+    font-size:13px;border:1px solid transparent}
+  .tab.on{background:var(--sel);color:var(--hi);border-color:#2b4a75}
+  .tab b{font-weight:600}
+  main{padding:10px 12px 90px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px}
+  .row{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:baseline}
+  .rank{color:var(--muted);font-size:12px}
+  .name{color:var(--hi);font-size:14.5px;font-weight:600;line-height:1.35;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .stars{color:var(--gold);font-size:12.5px;white-space:nowrap;justify-self:end}
+  .d{color:var(--green);font-size:11px;margin-left:5px}
+  .desc{color:var(--text);font-size:12.5px;line-height:1.5;margin:6px 0 0;overflow-wrap:anywhere;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .tags{margin-top:7px;display:flex;gap:6px;flex-wrap:wrap;font-size:10.5px;color:var(--muted)}
+  .tags span{background:#11161d;border:1px solid var(--border);border-radius:6px;padding:1px 6px}
+  .more{max-height:0;overflow:hidden;transition:max-height .25s ease}
+  .more.open{max-height:3000px}
+  .box{padding-top:10px;margin-top:10px;border-top:1px dashed var(--border)}
+  .h{color:var(--gold);font-size:12px;font-weight:600;margin:10px 0 6px}
+  .h.zh{color:var(--green)}
+  .bullet{font-size:12.5px;line-height:1.55;margin:0 0 6px;padding-left:12px;position:relative}
+  .bullet:before{content:"•";position:absolute;left:0;color:var(--muted)}
+  .zh{color:#c8d6e5;font-size:12.5px;line-height:1.6;white-space:pre-wrap}
+  .links{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .links a{flex:1;min-width:120px;text-align:center;text-decoration:none;font-size:12.5px;padding:9px 6px;
+    border-radius:9px;border:1px solid var(--border);background:#1b222c;color:var(--hi)}
+  .links a.primary{background:#1f6feb22;border-color:#2b4a75;color:var(--acc)}
+  .foot{text-align:center;color:var(--muted);font-size:11px;padding:16px 0 4px}
+  .err{background:#3d1d1d;border-color:#6b2b2b;color:#ffb4b4}
+  .empty{color:var(--muted);text-align:center;padding:40px 0;font-size:13px}
+  button.ref{background:#1a2029;border:1px solid var(--border);color:var(--text);border-radius:8px;
+    font-size:11.5px;padding:5px 10px}
+</style>
+</head>
+<body>
+<header>
+  <div style="display:flex;align-items:center;gap:10px">
+    <h1>github 棒棒棒</h1>
+    <button class="ref" id="refresh" style="margin-left:auto">刷新</button>
+  </div>
+  <div class="meta" id="updated">加载中…</div>
+  <div class="tabs">
+    <div class="tab on" data-k="today">今日最新 <b id="nToday">-</b></div>
+    <div class="tab" data-k="week">近 7 天 <b id="nWeek">-</b></div>
+  </div>
+</header>
+<main id="list"></main>
+<div class="foot">数据来自 GitHub 官方 API · 点开卡片看功能与中文</div>
+
+<script>
+const state = { data:null, tab:'today', open:{} };
+const $ = (s)=>document.querySelector(s);
+const esc = (s)=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const API = 'https://api.github.com';
+const HDR = { 'Accept':'application/vnd.github+json' };
+const CACHE_KEY = 'ghbbb.data.v1';
+const TR_KEY = 'ghbbb.tr.v1';
+const DT_KEY = 'ghbbb.detail.v1';
+const TTL = 30*60*1000;
+
+const BAD = ['crack','cracked','keygen','activat','pre-activat','nulled','torrent','pirat',
+ 'serial key','license key','full version','repack','warez','aimbot','wallhack','cheat engine',
+ 'mod menu','for windows','for mac','installer','破解','激活','下载'];
+const isSpam = (r)=>{
+  const t = ((r.name||'')+' '+(r.description||'')+' '+((r.topics||[]).join(' '))).toLowerCase();
+  if (BAD.some(b=>t.includes(b))) return true;
+  if (r.stargazers_count>=50 && r.forks_count===0) return true;
+  return false;
+};
+const pad = (n)=>String(n).padStart(2,'0');
+const ymd = (d)=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const todayStr = ()=>ymd(new Date());
+const daysAgo = (n)=>ymd(new Date(Date.now()-n*86400000));
+
+function shape(r){
+  return { full:r.full_name, desc:r.description||'', lang:r.language||'', stars:r.stargazers_count,
+    forks:r.forks_count, created:(r.created_at||'').slice(0,10), pushed:(r.pushed_at||'').slice(0,10),
+    url:r.html_url, topics:(r.topics||[]).slice(0,4),
+    license:(r.license&&(r.license.spdx_id||r.license.name))||'' };
+}
+
+async function search(q, page){
+  const u = `${API}/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=100&page=${page}`;
+  const r = await fetch(u, {headers:HDR, cache:'no-store'});
+  if (r.status===403 || r.status===429) throw new Error('GitHub 接口限流，等 1 分钟再刷新');
+  if (!r.ok) throw new Error('搜索失败 HTTP '+r.status);
+  const j = await r.json();
+  return j.items||[];
+}
+
+async function buildList(q, pages){
+  const all = [];
+  for(let p=1;p<=pages;p++){
+    const it = await search(q,p);
+    all.push(...it);
+    if (it.length<100) break;
+  }
+  const seen = new Set();
+  const out = [];
+  for(const r of all){
+    if(seen.has(r.full_name)) continue;
+    if(isSpam(r)) continue;
+    if(!r.description || r.description.length<8) continue;
+    seen.add(r.full_name);
+    out.push(shape(r));
+  }
+  out.sort((a,b)=>b.stars-a.stars);
+  return out.slice(0,50);
+}
+
+/* ---------- README → 功能 ---------- */
+function splitDigest(md){
+  const lines = md.replace(/\r/g,'').split('\n');
+  const heads=[''], blocks=[[]];
+  let code=false, front=false;
+  for(let raw of lines){
+    const l = raw.trim();
+    if(l.startsWith('```')){ code=!code; continue; }
+    if(code) continue;
+    if(front){ if(l==='---') front=false; continue; }
+    if(l==='---' && blocks.length===1 && blocks[0].length===0){ front=true; continue; }
+    if(l.startsWith('#')){ heads.push(l.replace(/^#+/,'').trim()); blocks.push([]); continue; }
+    blocks[blocks.length-1].push(l);
+  }
+  const scoreHead = (h)=>{
+    const s=h.toLowerCase(); let v=0;
+    if(/(feature|功能|特性|亮点|highlight|capabilit|about|overview|what)/.test(s)) v+=20;
+    if(/(install|build|setup|requirement|prerequisit|getting started|quick ?start|usage|compile|deploy|faq|license|contribut|changelog|credit|acknowledg|system|hardware|compatib|dependenc|安装|构建|编译|部署|许可|贡献)/.test(s)) v-=40;
+    return v;
+  };
+  const isBullet = (l)=>/^([-*+•]\s|\d+[.)]\s)/.test(l);
+  const strip = (l)=>l.replace(/\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[*`_>|#]/g,'').replace(/\s+/g,' ').trim();
+  let best=-1,bestScore=-999;
+  heads.forEach((h,i)=>{
+    const sc = scoreHead(h)+Math.min(blocks[i].filter(isBullet).length,8)-Math.floor(i/3)+(i===0?3:0);
+    if(sc>bestScore){bestScore=sc;best=i;}
+  });
+  const bulletsOf = (arr,max)=>arr.filter(isBullet).map(strip)
+    .filter(s=>s.length>=6&&s.length<=220&&!/https?:\/\/|npm i |pip install|cargo install|sudo /.test(s)).slice(0,max);
+  let features=[];
+  if(best>=0&&bestScore>0) features=bulletsOf(blocks[best],12);
+  if(!features.length) features=bulletsOf(blocks[0],12);
+  if(!features.length){
+    const para=blocks[0].map(strip).filter(s=>s.length>12).join(' ');
+    if(para) features=[para.slice(0,500)];
+  }
+  return features;
+}
+
+/* ---------- 翻译（MyMemory，带缓存） ---------- */
+let trCache = {};
+try{ trCache = JSON.parse(localStorage.getItem(TR_KEY)||'{}'); }catch(e){}
+const isChinese = (s)=>{
+  const cjk=(s.match(/[\u4e00-\u9fff]/g)||[]).length;
+  const lat=(s.match(/[a-zA-Z]/g)||[]).length;
+  return cjk>0 && cjk*4>=lat;
+};
+async function translate(text){
+  if(!text||isChinese(text)) return '';
+  if(trCache[text]) return trCache[text];
+  const chunks=[]; let rest=text.trim();
+  while(rest.length>420){
+    let cut=-1;
+    for(let i=420;i>210;i--) if(/[.!?;\n。]/.test(rest[i])){cut=i;break;}
+    if(cut<0) cut=420;
+    chunks.push(rest.slice(0,cut+1)); rest=rest.slice(cut+1).trim();
+  }
+  if(rest) chunks.push(rest);
+  const parts=[];
+  for(const c of chunks){
+    try{
+      const u=`https://api.mymemory.translated.net/get?q=${encodeURIComponent(c)}&langpair=en|zh-CN`;
+      const r=await fetch(u);
+      const j=await r.json();
+      const t=(j.responseData&&j.responseData.translatedText)||'';
+      if(!t||/MYMEMORY WARNING|QUERY LENGTH LIMIT/i.test(t)) return '';
+      parts.push(t.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&'));
+    }catch(e){ return ''; }
+  }
+  const out=parts.join(' ').trim();
+  if(out){
+    trCache[text]=out;
+    try{ localStorage.setItem(TR_KEY, JSON.stringify(trCache)); }catch(e){}
+  }
+  return out;
+}
+
+/* ---------- 详情 ---------- */
+let dtCache = {};
+try{ dtCache = JSON.parse(localStorage.getItem(DT_KEY)||'{}'); }catch(e){}
+async function getDetail(full){
+  if(dtCache[full]) return dtCache[full];
+  let features=[];
+  try{
+    const r=await fetch(`${API}/repos/${full}/readme`,{headers:HDR});
+    if(r.ok){
+      const j=await r.json();
+      if(j.content) features = splitDigest(decodeURIComponent(escape(atob(j.content.replace(/\n/g,'')))));
+    }
+  }catch(e){}
+  const item=(state.data.week.concat(state.data.today)).find(x=>x.full===full)||{};
+  const trDesc=await translate(item.desc||'');
+  const trFeat=features.length?await translate(features.join('\n')):'';
+  const out={features,trDesc,trFeat};
+  dtCache[full]=out;
+  try{ localStorage.setItem(DT_KEY, JSON.stringify(dtCache)); }catch(e){}
+  return out;
+}
+
+/* ---------- 渲染 ---------- */
+function ago(iso){
+  if(!iso) return '未更新';
+  const m=Math.round((Date.now()-new Date(iso).getTime())/60000);
+  if(m<1) return '刚刚更新';
+  if(m<60) return m+' 分钟前更新';
+  return Math.floor(m/60)+' 小时前更新';
+}
+
+function detailHtml(d){
+  const feats=(d.features||[]).map(f=>`<div class="bullet">${esc(f)}</div>`).join('')||'<div class="zh">这个项目没有可提取的功能条目</div>';
+  const trF=d.trFeat?`<div class="h zh">功能（中文）</div><div class="zh">${esc(d.trFeat)}</div>`:'';
+  return `<div class="h">功能</div>${feats}${trF}
+    <div class="links">
+      <a class="primary" href="#" data-open="repo">打开项目</a>
+      <a href="#" data-open="rel">下载 / Releases</a>
+    </div>`;
+}
+
+function render(){
+  const d=state.data;
+  if(!d){ $('#list').innerHTML='<div class="empty">加载中…</div>'; return; }
+  if(d.error){ $('#list').innerHTML=`<div class="card err">${esc(d.error)}</div>`; }
+  $('#updated').textContent = ago(d.updated) + (d.fromCache?'（缓存）':'');
+  $('#nToday').textContent=(d.today||[]).length;
+  $('#nWeek').textContent=(d.week||[]).length;
+  const list=d[state.tab]||[];
+  if(!list.length){ $('#list').innerHTML='<div class="empty">这一栏暂时没有项目，点右上「刷新」再试</div>'; return; }
+  $('#list').innerHTML=list.map((r,i)=>{
+    const o=state.open[r.full];
+    const open=o?' open':'';
+    const dl=r.delta==null?'':(r.delta>=0?'+':'')+r.delta;
+    const body=o&&o.loaded?detailHtml(o):'<div class="zh">正在读取 README…</div>';
+    return `<div class="card" data-full="${esc(r.full)}">
+      <div class="row">
+        <span class="rank">${i+1}</span>
+        <span class="name">${esc(r.full)}</span>
+        <span class="stars">★ ${r.stars.toLocaleString()}${dl?`<span class="d">${dl}</span>`:''}</span>
+      </div>
+      <div class="desc">${esc(r.desc)||'（无简介）'}</div>
+      <div class="tags">${r.lang?`<span>${esc(r.lang)}</span>`:''}${r.license?`<span>${esc(r.license)}</span>`:''}${(r.topics||[]).map(t=>`<span>#${esc(t)}</span>`).join('')}</div>
+      <div class="more${open}"><div class="box">${body}</div></div>
+    </div>`;
+  }).join('');
+}
+
+async function loadDetail(full){
+  const d=await getDetail(full);
+  state.open[full]=Object.assign({loaded:true},d);
+  const card=[...document.querySelectorAll('.card')].find(c=>c.dataset.full===full);
+  const box=card&&card.querySelector('.box');
+  if(box) box.innerHTML=detailHtml(d);
+}
+
+document.addEventListener('click',(ev)=>{
+  const tab=ev.target.closest('.tab');
+  if(tab){
+    state.tab=tab.dataset.k;
+    document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t===tab));
+    render(); return;
+  }
+  const link=ev.target.closest('a[data-open]');
+  if(link){
+    ev.preventDefault();
+    const card=link.closest('.card');
+    if(!card) return;
+    const full=card.dataset.full;
+    location.href=`https://github.com/${full}`+(link.dataset.open==='rel'?'/releases':'');
+    return;
+  }
+  const card=ev.target.closest('.card');
+  if(!card||!card.dataset.full) return;
+  const full=card.dataset.full;
+  const more=card.querySelector('.more');
+  if(more.classList.contains('open')){ more.classList.remove('open'); state.open[full]=null; return; }
+  more.classList.add('open');
+  state.open[full]=state.open[full]||{};
+  if(!dtCache[full]) loadDetail(full);
+  else { state.open[full]=Object.assign({loaded:true},dtCache[full]); card.querySelector('.box').innerHTML=detailHtml(dtCache[full]); }
+});
+
+async function load(force){
+  if(!force){
+    try{
+      const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');
+      if(cached && Date.now()-new Date(cached.updated).getTime()<TTL){
+        cached.fromCache=true; state.data=cached; render(); return;
+      }
+    }catch(e){}
+  }
+  $('#updated').textContent='正在获取最新数据…';
+  try{
+    const [today, week] = await Promise.all([
+      buildList(`created:>=${todayStr()} stars:>=2 forks:>=1`,2).catch(()=>[]),
+      buildList(`created:>${daysAgo(7)} stars:>=50 forks:>=3`,2)
+    ]);
+    // 日增：和本机上次保存的星数对比
+    let prev={};
+    try{ prev=JSON.parse(localStorage.getItem('ghbbb.stars')||'{}'); }catch(e){}
+    const mark=(list)=>list.forEach(r=>{ r.delta = typeof prev[r.full]==='number' ? r.stars-prev[r.full] : null; });
+    mark(today); mark(week);
+    const stars={};
+    week.forEach(r=>stars[r.full]=r.stars); today.forEach(r=>stars[r.full]=r.stars);
+    try{ localStorage.setItem('ghbbb.stars', JSON.stringify(stars)); }catch(e){}
+
+    state.data={updated:new Date().toISOString(), today, week, error:null};
+    try{ localStorage.setItem(CACHE_KEY, JSON.stringify(state.data)); }catch(e){}
+    render();
+  }catch(e){
+    try{
+      const cached=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');
+      if(cached){ cached.fromCache=true; cached.error='拉取失败：'+e.message+'（显示上次数据）'; state.data=cached; render(); return; }
+    }catch(_){}
+    state.data={updated:null,today:[],week:[],error:'连不上 GitHub：'+e.message};
+    render();
+  }
+}
+
+$('#refresh').addEventListener('click',()=>load(true));
+load(false);
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) load(false); });
+</script>
+</body>
+</html>
